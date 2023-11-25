@@ -1,0 +1,400 @@
+// OpenGL + GLSL "Rippled Floor" scene
+// Written by Aleksandr Pogosov
+// aleksandr7937937@gmail.com
+// How it should look: https://youtu.be/TUf1XBcLKkg?si=QRx1a_qEdNEdnbTq
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <iostream>
+#define GET_VAR_NAME(Var)(#Var)
+
+int WIDTH = 800, HEIGHT = 600;
+
+const char* vertShader_1 =
+"#version 330 \n"
+"layout (location = 0) in vec3 posV; \n"
+"layout (location = 1) in vec3 colIn; \n"
+"layout (location = 2) in vec2 uvIn; \n"
+"uniform mat4 model; \n"
+"uniform mat4 view; \n"
+"uniform mat4 projection; \n"
+"out vec3 col; \n"
+"out vec2 uv; \n"
+"void main() \n"
+"{ \n"
+"col = colIn; \n"
+"uv = uvIn; \n"
+"gl_Position = projection * view * model * vec4(posV,1.0f); \n"
+"}; \n"
+;
+
+const char* fragShader_1 =
+"#version 330 \n"
+"out vec4 finalCol; \n"
+"in vec3 col; \n"
+"in vec2 uv; \n"
+"void main() \n"
+"{ \n"
+"if(abs(uv.x) > 0.95 || abs(uv.y) > 0.95) \n"
+"finalCol = vec4(0.0,0.0,0.0,1.0); \n"
+"else \n"
+"finalCol = vec4(col,1.0); \n"
+"} \n";
+
+const char* fragShader_Floor =
+"#version 330 \n"
+"out vec4 finalCol; \n"
+"in vec3 col; \n"
+"in vec2 uv; \n"
+"uniform float iTime;\n"
+"uniform vec2 iResolution;\n"
+"void main() \n"
+"{ \n"
+// The ripple math formula for this GLSL shader taken from Benjamin Swee video on Unity CG shaders: https://youtu.be/lQ7GNoT_LrE?si=ei24IRow38CYADao
+"vec2 uvLiquid = uv* 5.0; \n"
+"float leng = length(uvLiquid); \n"
+"float edge_Inner = leng - 1.2, edge_Outer = leng + 2.3; \n"
+"float time = fract((iTime + 1.12) / 3.0) * 10.0 ; \n"
+"float ring_Outer = smoothstep(edge_Outer, edge_Inner, time); \n"
+"float ring_Inner = 1.0 - ring_Outer; \n"
+"float ring_Final = ring_Outer * ring_Inner; \n"
+"uvLiquid = uvLiquid + uvLiquid * vec2(ring_Final); \n"
+"float tiles = mod(floor(uvLiquid.x) + floor(uvLiquid.y), 2.0); \n"
+"vec3 colLiquid = vec3(tiles); \n"
+"finalCol = vec4(colLiquid,1.0); \n"
+"} \n";
+
+void windowResize(GLFWwindow* window, int width, int height);
+unsigned int CreateShader(GLenum shaderType, const char* shaderSource, const char* shaderName);
+unsigned int LinkShaders(unsigned int vertShader, unsigned int fragShader);
+
+
+int main()
+{
+	if (glfwInit() == 0)
+	{
+		std::cout << "glfw failed to initialize..." << std::endl;
+		glfwTerminate();
+		return -1;
+	}
+
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+
+	GLFWwindow* window = glfwCreateWindow(800, 600, "Main Window", NULL, NULL);
+
+	if (window == 0)
+	{
+		std::cout << "Window was not created..." << std::endl;
+		glfwTerminate();
+		return -1;
+	}
+
+	glfwSetWindowSizeCallback(window, windowResize);
+
+	glfwMakeContextCurrent(window);
+
+	if (gladLoadGLLoader((GLADloadproc)glfwGetProcAddress) == 0)
+	{
+		std::cout << "Glad failed to initialize..." << std::endl;
+		glfwTerminate();
+		return -1;
+	}
+
+
+	//Vertices Walls
+	float wallsAndFloor_X = 2.0f;
+	float wallsAndFloor_Y = 1.2f;
+	float wallsAndFloor_Z = 4.0f;
+	float vertices_Walls[] =
+	{
+
+		-wallsAndFloor_X, -wallsAndFloor_Y, -wallsAndFloor_Z,	0.1f, 0.9f, 0.2f,	-1.0f, -1.0f,
+		-wallsAndFloor_X, wallsAndFloor_Y, -wallsAndFloor_Z,		0.1f, 0.9f, 0.2f,	-1.0f, 1.0f,
+		wallsAndFloor_X, wallsAndFloor_Y, -wallsAndFloor_Z,		0.1f, 0.9f, 0.2f,	1.0f, 1.0f,
+		wallsAndFloor_X, -wallsAndFloor_Y, -wallsAndFloor_Z,		0.1f, 0.9f, 0.2f,	1.0f, -1.0f,
+
+		-wallsAndFloor_X, -wallsAndFloor_Y, -wallsAndFloor_Z / 2.0f,	1.0f, 0.9f, 0.2f,	-1.0f, -1.0f,
+		-wallsAndFloor_X, wallsAndFloor_Y, -wallsAndFloor_Z / 2.0f,		1.0f, 0.9f, 0.2f,	-1.0f, 1.0f,
+		-wallsAndFloor_X, wallsAndFloor_Y, -wallsAndFloor_Z,		1.0f, 0.9f, 0.2f,	1.0f, 1.0f,
+		-wallsAndFloor_X, -wallsAndFloor_Y, -wallsAndFloor_Z,	1.0f, 0.9f, 0.2f,	1.0f, -1.0f,
+
+		wallsAndFloor_X, -wallsAndFloor_Y, -wallsAndFloor_Z / 2.0f,		1.0f, 0.9f, 0.2f,	-1.0f, -1.0f,
+		wallsAndFloor_X, wallsAndFloor_Y, -wallsAndFloor_Z / 2.0f,		1.0f, 0.9f, 0.2f,	-1.0f, 1.0f,
+		wallsAndFloor_X, wallsAndFloor_Y, -wallsAndFloor_Z,		1.0f, 0.9f, 0.2f,	1.0f, 1.0f,
+		wallsAndFloor_X, -wallsAndFloor_Y, -wallsAndFloor_Z,		1.0f, 0.9f, 0.2f,	1.0f, -1.0f,
+	};
+
+	unsigned int ebo_Walls[] =
+	{
+		0,1,2,
+		2,3,0,
+
+		4,5,6,
+		6,7,4,
+
+		8,9,10,
+		10,11,8
+	};
+
+
+	unsigned int vbo_Walls;
+	unsigned int vao_Walls;
+	glGenBuffers(1, &vbo_Walls);
+	glGenVertexArrays(1, &vao_Walls);
+
+	glBindVertexArray(vao_Walls);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo_Walls);
+
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices_Walls), vertices_Walls, GL_STATIC_DRAW);
+
+	unsigned int stride = sizeof(float) * 8;
+
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, 0);
+	glEnableVertexAttribArray(0);
+
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 3));
+	glEnableVertexAttribArray(1);
+
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 6));
+	glEnableVertexAttribArray(2);
+
+	float vertices_Floor[] =
+	{
+		-wallsAndFloor_X, -wallsAndFloor_Y, -wallsAndFloor_Z / 2.0f,	0.1f, 0.9f, 0.2f,	-1.0f, -1.0f,
+		-wallsAndFloor_X, -wallsAndFloor_Y, -wallsAndFloor_Z,	0.1f, 0.9f, 0.2f,	-1.0f, 1.0f,
+		wallsAndFloor_X, -wallsAndFloor_Y, -wallsAndFloor_Z,		0.1f, 0.9f, 0.2f,	1.0f, 1.0f,
+		wallsAndFloor_X, -wallsAndFloor_Y, -wallsAndFloor_Z / 2.0f,		0.1f, 0.9f, 0.2f,	1.0f, -1.0f,
+	};
+
+	unsigned int ebo_Floor[] =
+	{
+		0,1,2,
+		2,3,0
+	};
+
+
+	unsigned int vao_Floor;
+	unsigned int vbo_Floor;
+
+	glGenBuffers(1, &vbo_Floor);
+	glGenVertexArrays(1, &vao_Floor);
+
+	glBindVertexArray(vao_Floor);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo_Floor);
+
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices_Floor), vertices_Floor, GL_STATIC_DRAW);
+
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, 0);
+	glEnableVertexAttribArray(0);
+
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 3));
+	glEnableVertexAttribArray(1);
+
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 6));
+	glEnableVertexAttribArray(2);
+
+	float cubeSize = 0.5f;
+	float r_Cube = 0.25f, g_Cube = 1.0f, b_Cube = 0.2f;
+	float u_Cube = 1.0f;
+	float v_Cube = 1.0f;
+	float vertices_Cube[] =
+	{
+		-cubeSize, -cubeSize, -cubeSize,	r_Cube, g_Cube, b_Cube,		-u_Cube, -v_Cube,
+		-cubeSize, cubeSize, -cubeSize,		r_Cube, g_Cube, b_Cube,		-u_Cube, v_Cube,
+		cubeSize, cubeSize, -cubeSize,		r_Cube, g_Cube, b_Cube,		u_Cube, v_Cube,
+		cubeSize, -cubeSize, -cubeSize,		r_Cube, g_Cube, b_Cube,		u_Cube, -v_Cube,
+
+		cubeSize, -cubeSize, -cubeSize,		r_Cube, g_Cube, b_Cube,		-u_Cube, -v_Cube,
+		cubeSize, cubeSize, -cubeSize,		r_Cube, g_Cube, b_Cube,		-u_Cube, v_Cube,
+		cubeSize, cubeSize, cubeSize,		r_Cube, g_Cube, b_Cube,		u_Cube, v_Cube,
+		cubeSize, -cubeSize, cubeSize,		r_Cube, g_Cube, b_Cube,		u_Cube, -v_Cube,
+
+		-cubeSize, -cubeSize, cubeSize,		r_Cube, g_Cube, b_Cube,		-u_Cube, -v_Cube,
+		-cubeSize, -cubeSize, -cubeSize,	r_Cube, g_Cube, b_Cube,		-u_Cube, v_Cube,
+		cubeSize, -cubeSize, -cubeSize,		r_Cube, g_Cube, b_Cube,		u_Cube, v_Cube,
+		cubeSize, -cubeSize, cubeSize,		r_Cube, g_Cube, b_Cube,		u_Cube, -v_Cube,
+
+		-cubeSize, -cubeSize, -cubeSize,	r_Cube, g_Cube, b_Cube,		-u_Cube, -v_Cube,
+		-cubeSize, cubeSize, -cubeSize,		r_Cube, g_Cube, b_Cube,		-u_Cube, v_Cube,
+		-cubeSize, cubeSize, cubeSize,		r_Cube, g_Cube, b_Cube,		u_Cube, v_Cube,
+		-cubeSize, -cubeSize, cubeSize,		r_Cube, g_Cube, b_Cube,		u_Cube, -v_Cube,
+
+		-cubeSize, cubeSize, -cubeSize,		r_Cube, g_Cube, b_Cube,		-u_Cube, -v_Cube,
+		-cubeSize, cubeSize, cubeSize,		r_Cube, g_Cube, b_Cube,		-u_Cube, v_Cube,
+		cubeSize, cubeSize, cubeSize,		r_Cube, g_Cube, b_Cube,		u_Cube, v_Cube,
+		cubeSize, cubeSize, -cubeSize,		r_Cube, g_Cube, b_Cube,		u_Cube, -v_Cube,
+
+		-cubeSize, -cubeSize, cubeSize,		r_Cube, g_Cube, b_Cube,		-u_Cube, -v_Cube,
+		-cubeSize, cubeSize, cubeSize,		r_Cube, g_Cube, b_Cube,		-u_Cube, v_Cube,
+		cubeSize, cubeSize, cubeSize,		r_Cube, g_Cube, b_Cube,		u_Cube, v_Cube,
+		cubeSize, -cubeSize, cubeSize,		r_Cube, g_Cube, b_Cube,		u_Cube, -v_Cube,
+	};
+
+	unsigned int ebo_Cube[] =
+	{
+		0,1,2,
+		2,3,0,
+
+		4,5,6,
+		6,7,4,
+
+		8,9,10,
+		10,11,8,
+
+		12,13,14,
+		14,15,12,
+
+		16,17,18,
+		18,19,16,
+
+		20,21,22,
+		22,23,20
+	};
+
+	unsigned int vao_Cube;
+	unsigned int vbo_Cube;
+
+	glGenBuffers(1, &vbo_Cube);
+	glGenVertexArrays(1, &vao_Cube);
+
+	glBindVertexArray(vao_Cube);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo_Cube);
+
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices_Cube), vertices_Cube, GL_STATIC_DRAW);
+
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, 0);
+	glEnableVertexAttribArray(0);
+
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 3));
+	glEnableVertexAttribArray(1);
+
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 6));
+	glEnableVertexAttribArray(2);
+
+
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	//Shaders
+	//Walls and Cube
+	const char* vertShader_1_Name = GET_VAR_NAME(vertShader_1);
+	unsigned int vertShader_1_Id = CreateShader(GL_VERTEX_SHADER, vertShader_1, vertShader_1_Name);
+
+	const char* fragShader_1_Name = GET_VAR_NAME(fragShader_1);
+	unsigned int fragShader_1_Id = CreateShader(GL_FRAGMENT_SHADER, fragShader_1, fragShader_1_Name);
+
+	unsigned int shaderProgram_1 = LinkShaders(vertShader_1_Id, fragShader_1_Id);
+
+	//Floor
+	const char* vertShader_Floor_Name = GET_VAR_NAME(vertShader_1);
+	unsigned int vertShader_Floor_Id = CreateShader(GL_VERTEX_SHADER, vertShader_1, vertShader_Floor_Name);
+
+	const char* fragShader_Floor_Name = GET_VAR_NAME(fragShader_Floor);
+	unsigned int fragShader_Floor_Id = CreateShader(GL_FRAGMENT_SHADER, fragShader_Floor, fragShader_Floor_Name);
+
+	unsigned int shaderProgram_Floor = LinkShaders(vertShader_Floor_Id, fragShader_Floor_Id);
+
+
+	glEnable(GL_DEPTH_TEST);
+
+	while (!glfwWindowShouldClose(window))
+	{
+		glClearColor(0.0f, 1.0f, 0.5f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+		glClear(GL_DEPTH_BUFFER_BIT);
+
+		//Matrices
+		glUseProgram(shaderProgram_1);
+		glm::mat4 model(1.0f);
+		model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
+		glUniformMatrix4fv(glGetUniformLocation(shaderProgram_1, "model"), 1, GL_FALSE, glm::value_ptr(model));
+
+		glm::mat4 view(1.0f);
+		glUniformMatrix4fv(glGetUniformLocation(shaderProgram_1, "view"), 1, GL_FALSE, glm::value_ptr(view));
+
+		glm::mat4 projection(1.0f);
+		glfwGetWindowSize(window, &WIDTH, &HEIGHT);
+
+		float aspectRation = (float)WIDTH / (float)HEIGHT;
+		projection = glm::perspective(45.0f, aspectRation, 0.001f, 200.0f);
+		glUniformMatrix4fv(glGetUniformLocation(shaderProgram_1, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+
+		//Walls 
+		glBindVertexArray(vao_Walls);
+		glDrawElements(GL_TRIANGLES, sizeof(ebo_Walls), GL_UNSIGNED_INT, ebo_Walls);
+
+		//Cube
+		model = glm::translate(model, glm::vec3(0.0f, glm::fract(-glfwGetTime() / 3.0f) * 10.0f - 4.0f, -3.0f));
+		model = glm::rotate(model, (float)glfwGetTime(), glm::vec3(0.0f, 1.0f, 0.0f));
+		glUniformMatrix4fv(glGetUniformLocation(shaderProgram_1, "model"), 1, GL_FALSE, glm::value_ptr(model));
+		glBindVertexArray(vao_Cube);
+		glDrawElements(GL_TRIANGLES, sizeof(ebo_Cube), GL_UNSIGNED_INT, ebo_Cube);
+
+		//Floor
+		glUseProgram(shaderProgram_Floor);
+		model = glm::mat4(1.0f);
+		glUniformMatrix4fv(glGetUniformLocation(shaderProgram_Floor, "model"), 1, GL_FALSE, glm::value_ptr(model));
+		glUniformMatrix4fv(glGetUniformLocation(shaderProgram_Floor, "view"), 1, GL_FALSE, glm::value_ptr(view));
+		glUniformMatrix4fv(glGetUniformLocation(shaderProgram_Floor, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+		glBindVertexArray(vao_Floor);
+		glUniform1f(glGetUniformLocation(shaderProgram_Floor, "iTime"), (float)glfwGetTime());
+		glm::vec2 iResolution = glm::vec2(float(WIDTH), (float)HEIGHT);
+		glUniform2fv(glGetUniformLocation(shaderProgram_Floor, "iResolution"), 1, glm::value_ptr(iResolution));
+		glDrawElements(GL_TRIANGLES, sizeof(ebo_Floor), GL_UNSIGNED_INT, ebo_Floor);
+
+		glfwSwapBuffers(window);
+		glfwPollEvents();
+	}
+}
+
+void windowResize(GLFWwindow* window, int width, int height)
+{
+	glViewport(0, 0, width, height);
+}
+
+
+unsigned int CreateShader(GLenum shaderType, const char* shaderSource, const char* shaderName)
+{
+	unsigned int shader_Id = glCreateShader(shaderType);
+
+	glShaderSource(shader_Id, 1, &shaderSource, NULL);
+	glCompileShader(shader_Id);
+
+	int shader_CompileResult = 0;
+	char shader_InfoLog[1024];
+
+	glGetShaderiv(shader_Id, GL_COMPILE_STATUS, &shader_CompileResult);
+	if (shader_CompileResult == 0)
+	{
+		glGetShaderInfoLog(shader_Id, 1024, NULL, shader_InfoLog);
+		std::cout << shaderName << " shader did not compile. InfoLog: " << shader_InfoLog << std::endl;
+	}
+	return shader_Id;
+}
+
+unsigned int LinkShaders(unsigned int vertShader, unsigned int fragShader)
+{
+	unsigned int shaderProgram_Id = glCreateProgram();
+
+	glAttachShader(shaderProgram_Id, vertShader);
+	glAttachShader(shaderProgram_Id, fragShader);
+
+	glLinkProgram(shaderProgram_Id);
+
+	int shaderProg_LinkRes = 0;
+	char shaderProg_InfoLog[1024];
+	glGetProgramiv(shaderProgram_Id, GL_LINK_STATUS, &shaderProg_LinkRes);
+
+	if (shaderProg_LinkRes == 0)
+	{
+		glGetProgramInfoLog(shaderProgram_Id, 1024, NULL, shaderProg_InfoLog);
+		std::cout << "Shader Program: " << shaderProgram_Id << " did not compile.InfoLog: " << shaderProg_InfoLog << std::endl;
+	}
+
+	return shaderProgram_Id;
+}
